@@ -1,6 +1,8 @@
 from flask import Flask, render_template, redirect, session, flash
 from flask_debugtoolbar import DebugToolbarExtension
 from werkzeug.exceptions import Unauthorized
+from sqlalchemy.exc import IntegrityError
+
 from models import connect_db, db, User, Feedback
 from forms import LoginForm, RegisterForm, FeedbackForm, DeleteForm
 
@@ -21,27 +23,6 @@ connect_db(app)
 def homepage():
     return redirect('/register')
 
-# @app.route('/register', methods=['GET', 'POST'])
-# def register_user():
-#     form = UserForm()
-#     if form.validate_on_submit():
-#         username = form.username.data
-#         password = form.password.data
-#         new_user = User.register(username, password)
-
-#         db.session.add(new_user)
-#         try:
-#             db.session.commit()
-#         except IntegrityError:
-#             form.username.errors.append('Username taken.  Please pick another')
-#             return render_template('register.html', form=form)
-#         session['user_id'] = new_user.id
-#         flash("Welcome! Successfully Created Your Account!", "success")
-
-#         return redirect('/tweets')
-
-#     return render_template('register.html', form=form)
-
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -58,33 +39,20 @@ def register():
         first_name = form.first_name.data
         last_name = form.last_name.data
 
-        user = User.register(username, password, email, first_name, last_name)
+        new_user = User.register(
+            username, password, email, first_name, last_name)
+        db.session.add(new_user)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            form.username.errors.append('Username taken.  Please pick another')
+            return render_template('users/register.html', form=form)
 
-        db.session.commit()
-        session['username'] = user.username
+        session['username'] = new_user.username
+        flash("Welcome! Successfully Created Your Account!", "success")
+        return redirect(f"/users/{new_user.username}")
 
-        return redirect(f"/users/{user.username}")
-    else:
-        return render_template('users/register.html', form=form)
-
-# ---------------------------------------------------------------------------------->
-
-# @app.route('/login', methods=['GET', 'POST'])
-# def login_user():
-#     form = UserForm()
-#     if form.validate_on_submit():
-#         username = form.username.data
-#         password = form.password.data
-
-#         user = User.authenticate(username, password)
-#         if user:
-#             flash(f"Welcome Back, {user.username}!", "primary")
-#             session['user_id'] = user.id
-#             return redirect('/tweets')
-#         else:
-#             form.username.errors = ['Invalid username/password.']
-
-#     return render_template('login.html', form=form)
+    return render_template('users/register.html', form=form)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -100,7 +68,7 @@ def login():
         username = form.username.data
         password = form.password.data
 
-        user = User.authenticate(username, password)  # <User> or False
+        user = User.authenticate(username, password)
         if user:
             session['username'] = user.username
             return redirect(f"/users/{user.username}")
@@ -111,22 +79,12 @@ def login():
     return render_template("users/login.html", form=form)
 
 
-# ---------------------------------------------------------------------------------->
-
-# @app.route('/logout')
-# def logout_user():
-#     session.pop('user_id')
-#     flash("Goodbye!", "info")
-#     return redirect('/')
-
-
 @app.route("/logout")
 def logout():
     """Logout route."""
 
     session.pop("username")
     return redirect("/login")
-# ---------------------------------------------------------------------------------->
 
 
 @app.route("/users/<username>")
@@ -206,26 +164,6 @@ def update_feedback(feedback_id):
 
     return render_template("/feedback/edit.html", form=form, feedback=feedback)
 
-# ---------------------------------------------------------------------------------->
-
-
-# @app.route('/tweets/<int:id>', methods=['POST'])
-# def delete_tweet(id):
-#     """"Delete tweet"""
-
-#     if 'user_id' not in session:
-#         flash("Please login first!", "danger")
-#         return redirect('/login')
-#     tweet = Tweet.query.get_or_404(id)
-
-#     if tweet.user_id == session['user_id']:
-#         db.session.delete(tweet)
-#         db.session.commit()
-#         flash("Tweet deleted!", "info")
-#         return redirect('/tweets')
-#     flash("You do not have permission to do that!", "danger")
-
-#     return redirect('/tweets')
 
 @app.route("/feedback/<int:feedback_id>/delete", methods=["POST"])
 def delete_feedback(feedback_id):
@@ -242,9 +180,3 @@ def delete_feedback(feedback_id):
         db.session.commit()
 
     return redirect(f"/users/{feedback.username}")
-
-
-# ---------------------------------------------------------------------------------->
-
-
-# As a best practice is better to set out the logout as a post route
